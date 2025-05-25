@@ -1,0 +1,69 @@
+{
+  "name": "aws-health-advice-chatbot-frontend",
+  "version": "1.0.0",
+  "description": "Modern React frontend for AWS Health Advice Chatbot with Lex v2 integration",
+  "keywords": ["react", "aws", "lex", "chatbot", "health", "voice", "serverless", "portfolio"],
+  "author": "AWS Portfolio Project",
+  "license": "MIT",
+  "private": true,
+  "homepage": ".",
+  "dependencies": {
+    "@testing-library/jest-dom": "^5.16.4",
+    "@testing-library/react": "^13.3.0",
+    "@testing-library/user-event": "^13.5.0",
+    "react": "^18.2.0",
+    "react-dom": "^18.2.0",
+    "react-scripts": "5.0.1",
+    "web-vitals": "^2.1.4",
+    "@aws-sdk/client-lex-runtime-v2": "^3.428.0",
+    "@aws-sdk/credential-provider-cognito-identity": "^3.428.0",
+    "@aws-sdk/client-cognito-identity": "^3.428.0",
+    "styled-components": "^6.0.7"
+  },
+  "scripts": {
+    "start": "react-scripts start",
+    "build": "react-scripts build",
+    "test": "react-scripts test --coverage --watchAll=false",
+    "test:watch": "react-scripts test",
+    "eject": "react-scripts eject",
+    "lint": "eslint src/ --ext .js,.jsx",
+    "lint:fix": "eslint src/ --ext .js,.jsx --fix",
+    "format": "prettier --write \"src/**/*.{js,jsx,css,md}\"",
+    "build:analyze": "npm run build && npx serve -s build",
+    "predeploy": "npm run build",
+    "deploy": "npm run build"
+  },
+  "eslintConfig": {
+    "extends": [
+      "react-app",
+      "react-app/jest"
+    ]
+  },
+  "browserslist": {
+    "production": [
+      ">0.2%",
+      "not dead",
+      "not op_mini all"
+    ],
+    "development": [
+      "last 1 chrome version",
+      "last 1 firefox version",
+      "last 1 safari version"
+    ]
+  },
+  "jest": {
+    "collectCoverageFrom": [
+      "src/**/*.{js,jsx}",
+      "!src/index.js",
+      "!src/reportWebVitals.js"
+    ],
+    "coverageThreshold": {
+      "global": {
+        "branches": 70,
+        "functions": 70,
+        "lines": 70,
+        "statements": 70
+      }
+    }
+  }
+}
