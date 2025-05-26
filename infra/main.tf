@@ -1,5 +1,5 @@
 # AWS Health Advice Chatbot Infrastructure
-# Production-ready Terraform configuration for Lex v2 Bot, Lambda, and supporting AWS resources
+# Minimal Terraform configuration for Lex v2 Bot with static responses only
 
 terraform {
   required_version = ">= 1.0"
@@ -7,10 +7,6 @@ terraform {
     aws = {
       source  = "hashicorp/aws"
       version = "~> 5.0"
-    }
-    archive = {
-      source  = "hashicorp/archive"
-      version = "~> 2.4"
     }
   }
 }
@@ -31,108 +27,6 @@ provider "aws" {
 # Data sources
 data "aws_caller_identity" "current" {}
 data "aws_region" "current" {}
-
-# Lambda deployment package
-data "archive_file" "lambda_zip" {
-  type        = "zip"
-  source_dir  = "${path.module}/../lambda"
-  output_path = "${path.module}/lambda_function.zip"
-  excludes    = ["__pycache__", "*.pyc", "test_*.py"]
-}
-
-# IAM Role for Lambda
-resource "aws_iam_role" "lambda_role" {
-  name = "${var.project_name}-lambda-role"
-
-  assume_role_policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [
-      {
-        Action = "sts:AssumeRole"
-        Effect = "Allow"
-        Principal = {
-          Service = "lambda.amazonaws.com"
-        }
-      }
-    ]
-  })
-
-  tags = {
-    Component = "Lambda"
-    Security  = "IAM"
-  }
-}
-
-# Enhanced IAM Policy for Lambda
-resource "aws_iam_role_policy" "lambda_policy" {
-  name = "${var.project_name}-lambda-policy"
-  role = aws_iam_role.lambda_role.id
-
-  policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [
-      {
-        Effect = "Allow"
-        Action = [
-          "logs:CreateLogGroup",
-          "logs:CreateLogStream",
-          "logs:PutLogEvents"
-        ]
-        Resource = "arn:aws:logs:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:log-group:/aws/lambda/${var.project_name}-*:*"
-      }
-    ]
-  })
-}
-
-# CloudWatch Log Group for Lambda
-resource "aws_cloudwatch_log_group" "lambda_logs" {
-  name              = "/aws/lambda/${var.project_name}-handler"
-  retention_in_days = 14
-
-  tags = {
-    Component = "Lambda"
-    Security  = "Logging"
-  }
-}
-
-# Lambda function with optimized configuration
-resource "aws_lambda_function" "health_advice_handler" {
-  filename         = data.archive_file.lambda_zip.output_path
-  function_name    = "${var.project_name}-handler"
-  role            = aws_iam_role.lambda_role.arn
-  handler         = "healthAdviceHandler.lambda_handler"
-  runtime         = "python3.11"
-  timeout         = 15
-  memory_size     = 256
-  source_code_hash = data.archive_file.lambda_zip.output_base64sha256
-
-  environment {
-    variables = {
-      LOG_LEVEL    = var.log_level
-      ENVIRONMENT  = var.environment
-      PROJECT_NAME = var.project_name
-    }
-  }
-
-  depends_on = [
-    aws_iam_role_policy.lambda_policy,
-    aws_cloudwatch_log_group.lambda_logs
-  ]
-
-  tags = {
-    Component = "Lambda"
-    Runtime   = "Python3.11"
-  }
-}
-
-# Lambda permission for Lex
-resource "aws_lambda_permission" "lex_invoke_lambda" {
-  statement_id  = "AllowExecutionFromLex"
-  action        = "lambda:InvokeFunction"
-  function_name = aws_lambda_function.health_advice_handler.function_name
-  principal     = "lexv2.amazonaws.com"
-  source_arn    = "${aws_lexv2models_bot.health_advice_bot.arn}/*"
-}
 
 # IAM Role for Lex
 resource "aws_iam_role" "lex_role" {
@@ -157,25 +51,6 @@ resource "aws_iam_role" "lex_role" {
   }
 }
 
-# IAM Policy for Lex
-resource "aws_iam_role_policy" "lex_policy" {
-  name = "${var.project_name}-lex-policy"
-  role = aws_iam_role.lex_role.id
-
-  policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [
-      {
-        Effect = "Allow"
-        Action = [
-          "lambda:InvokeFunction"
-        ]
-        Resource = aws_lambda_function.health_advice_handler.arn
-      }
-    ]
-  })
-}
-
 # Lex v2 Bot
 resource "aws_lexv2models_bot" "health_advice_bot" {
   name     = var.bot_name
@@ -186,8 +61,6 @@ resource "aws_lexv2models_bot" "health_advice_bot" {
   data_privacy {
     child_directed = false
   }
-
-  depends_on = [aws_iam_role_policy.lex_policy]
 
   tags = {
     Component = "Lex"
@@ -209,12 +82,12 @@ resource "aws_lexv2models_bot_locale" "health_advice_bot_locale" {
   }
 }
 
-# Health Intent Definitions
-resource "aws_lexv2models_intent" "healthy_diet_tips" {
+# Health Intent Definitions - All using minimal static configuration
+resource "aws_lexv2models_intent" "diet_tips" {
   bot_id      = aws_lexv2models_bot.health_advice_bot.id
   bot_version = "DRAFT"
   locale_id   = aws_lexv2models_bot_locale.health_advice_bot_locale.locale_id
-  name        = "HealthyDietTips"
+  name        = "DietTips"
 
   sample_utterance {
     utterance = "Give me healthy diet tips"
@@ -231,101 +104,25 @@ resource "aws_lexv2models_intent" "healthy_diet_tips" {
   sample_utterance {
     utterance = "What foods are good for me"
   }
-  sample_utterance {
-    utterance = "I need help with healthy eating habits"
-  }
 
-  fulfillment_code_hook {
-    enabled = true
+  closing_setting {
+    closing_response {
+      message_group {
+        message {
+          plain_text_message {
+            value = "Here are some healthy diet tips: Focus on whole foods like fruits, vegetables, lean proteins, and whole grains. Practice portion control and stay hydrated. Include healthy fats from sources like avocados, nuts, and olive oil. Limit processed foods and added sugars for better health outcomes."
+          }
+        }
+      }
+    }
   }
 }
 
-resource "aws_lexv2models_intent" "exercise_recommendations" {
+resource "aws_lexv2models_intent" "water_info" {
   bot_id      = aws_lexv2models_bot.health_advice_bot.id
   bot_version = "DRAFT"
   locale_id   = aws_lexv2models_bot_locale.health_advice_bot_locale.locale_id
-  name        = "ExerciseRecommendations"
-
-  sample_utterance {
-    utterance = "What exercises should I do"
-  }
-  sample_utterance {
-    utterance = "Give me workout recommendations"
-  }
-  sample_utterance {
-    utterance = "I need fitness advice"
-  }
-  sample_utterance {
-    utterance = "How should I exercise"
-  }
-  sample_utterance {
-    utterance = "What's a good workout routine"
-  }
-
-  fulfillment_code_hook {
-    enabled = true
-  }
-}
-
-resource "aws_lexv2models_intent" "mental_wellness_advice" {
-  bot_id      = aws_lexv2models_bot.health_advice_bot.id
-  bot_version = "DRAFT"
-  locale_id   = aws_lexv2models_bot_locale.health_advice_bot_locale.locale_id
-  name        = "MentalWellnessAdvice"
-
-  sample_utterance {
-    utterance = "Give me mental wellness tips"
-  }
-  sample_utterance {
-    utterance = "How can I improve my mental health"
-  }
-  sample_utterance {
-    utterance = "I need stress management advice"
-  }
-  sample_utterance {
-    utterance = "Help me with anxiety"
-  }
-  sample_utterance {
-    utterance = "What can I do for my mental wellbeing"
-  }
-
-  fulfillment_code_hook {
-    enabled = true
-  }
-}
-
-resource "aws_lexv2models_intent" "sleep_tips" {
-  bot_id      = aws_lexv2models_bot.health_advice_bot.id
-  bot_version = "DRAFT"
-  locale_id   = aws_lexv2models_bot_locale.health_advice_bot_locale.locale_id
-  name        = "SleepTips"
-
-  sample_utterance {
-    utterance = "How can I sleep better"
-  }
-  sample_utterance {
-    utterance = "Give me sleep advice"
-  }
-  sample_utterance {
-    utterance = "I have trouble sleeping"
-  }
-  sample_utterance {
-    utterance = "What helps with insomnia"
-  }
-  sample_utterance {
-    utterance = "Sleep hygiene tips"
-  }
-
-  fulfillment_code_hook {
-    enabled = true
-  }
-}
-
-resource "aws_lexv2models_intent" "hydration_info" {
-  bot_id      = aws_lexv2models_bot.health_advice_bot.id
-  bot_version = "DRAFT"
-  locale_id   = aws_lexv2models_bot_locale.health_advice_bot_locale.locale_id
-  name        = "HydrationInfo"
+  name        = "WaterInfo"
 
   sample_utterance {
     utterance = "How much water should I drink"
@@ -343,48 +140,120 @@ resource "aws_lexv2models_intent" "hydration_info" {
     utterance = "Benefits of staying hydrated"
   }
 
-  fulfillment_code_hook {
-    enabled = true
-  }
-}
-
-# Bot Version
-resource "aws_lexv2models_bot_version" "health_advice_bot_version" {
-  bot_id      = aws_lexv2models_bot.health_advice_bot.id
-  locale_specification = {
-    (aws_lexv2models_bot_locale.health_advice_bot_locale.locale_id) = {
-      source_bot_version = "DRAFT"
-    }
-  }
-  
-  depends_on = [
-    aws_lexv2models_intent.healthy_diet_tips,
-    aws_lexv2models_intent.exercise_recommendations,
-    aws_lexv2models_intent.mental_wellness_advice,
-    aws_lexv2models_intent.sleep_tips,
-    aws_lexv2models_intent.hydration_info
-  ]
-}
-
-# Bot Alias with Lambda Integration
-resource "aws_lexv2models_bot_alias" "health_advice_bot_alias" {
-  bot_alias_name = var.bot_alias_name
-  bot_id         = aws_lexv2models_bot.health_advice_bot.id
-  bot_version    = aws_lexv2models_bot_version.health_advice_bot_version.bot_version
-
-  bot_alias_locale_settings {
-    locale_id = aws_lexv2models_bot_locale.health_advice_bot_locale.locale_id
-    
-    code_hook_specification {
-      lambda_code_hook {
-        lambda_arn                = aws_lambda_function.health_advice_handler.arn
-        code_hook_interface_version = "1.0"
+  closing_setting {
+    closing_response {
+      message_group {
+        message {
+          plain_text_message {
+            value = "Aim for about 8 glasses (64 oz) of water daily. Increase intake during exercise and hot weather. Include water-rich foods like fruits and vegetables. Choose water over sugary drinks for better health and energy levels."
+          }
+        }
       }
     }
   }
+}
 
-  depends_on = [
-    aws_lexv2models_bot_version.health_advice_bot_version,
-    aws_lambda_permission.lex_invoke_lambda
-  ]
+resource "aws_lexv2models_intent" "exercise_tips" {
+  bot_id      = aws_lexv2models_bot.health_advice_bot.id
+  bot_version = "DRAFT"
+  locale_id   = aws_lexv2models_bot_locale.health_advice_bot_locale.locale_id
+  name        = "ExerciseTips"
+
+  sample_utterance {
+    utterance = "What exercises should I do"
+  }
+  sample_utterance {
+    utterance = "Give me workout recommendations"
+  }
+  sample_utterance {
+    utterance = "I need fitness advice"
+  }
+  sample_utterance {
+    utterance = "How should I exercise"
+  }
+  sample_utterance {
+    utterance = "What's a good workout routine"
+  }
+
+  closing_setting {
+    closing_response {
+      message_group {
+        message {
+          plain_text_message {
+            value = "Here are some exercise recommendations: Aim for at least 150 minutes of moderate aerobic activity per week. Include strength training 2-3 times per week targeting all major muscle groups. Try compound exercises like squats, deadlifts, and push-ups. Start slowly and gradually increase intensity to prevent injury."
+          }
+        }
+      }
+    }
+  }
+}
+
+resource "aws_lexv2models_intent" "mental_wellness" {
+  bot_id      = aws_lexv2models_bot.health_advice_bot.id
+  bot_version = "DRAFT"
+  locale_id   = aws_lexv2models_bot_locale.health_advice_bot_locale.locale_id
+  name        = "MentalWellness"
+
+  sample_utterance {
+    utterance = "Give me mental wellness tips"
+  }
+  sample_utterance {
+    utterance = "How can I improve my mental health"
+  }
+  sample_utterance {
+    utterance = "I need stress management advice"
+  }
+  sample_utterance {
+    utterance = "Help me with anxiety"
+  }
+  sample_utterance {
+    utterance = "What can I do for my mental wellbeing"
+  }
+
+  closing_setting {
+    closing_response {
+      message_group {
+        message {
+          plain_text_message {
+            value = "Here are some mental wellness tips: Practice mindfulness and meditation for 10-15 minutes daily. Maintain strong social connections with family and friends. Keep a gratitude journal to focus on positive aspects of life. Engage in regular physical activity to boost mood naturally. Prioritize quality sleep for emotional regulation."
+          }
+        }
+      }
+    }
+  }
+}
+
+resource "aws_lexv2models_intent" "sleep_advice" {
+  bot_id      = aws_lexv2models_bot.health_advice_bot.id
+  bot_version = "DRAFT"
+  locale_id   = aws_lexv2models_bot_locale.health_advice_bot_locale.locale_id
+  name        = "SleepAdvice"
+
+  sample_utterance {
+    utterance = "How can I sleep better"
+  }
+  sample_utterance {
+    utterance = "Give me sleep advice"
+  }
+  sample_utterance {
+    utterance = "I have trouble sleeping"
+  }
+  sample_utterance {
+    utterance = "What helps with insomnia"
+  }
+  sample_utterance {
+    utterance = "Sleep hygiene tips"
+  }
+
+  closing_setting {
+    closing_response {
+      message_group {
+        message {
+          plain_text_message {
+            value = "Here are some sleep tips: Maintain a consistent sleep schedule, going to bed and waking up at the same time daily. Create a relaxing bedtime routine and avoid screens 1 hour before bed. Keep your bedroom cool (65-68°F), dark, and quiet. Avoid caffeine after 2 PM and aim for 7-9 hours of sleep per night."
+          }
+        }
+      }
+    }
+  }
 }

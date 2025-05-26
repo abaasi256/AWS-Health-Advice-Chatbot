@@ -12,8 +12,4 @@ project_name = "health-advice-chatbot"
 bot_name     = "HealthAdviceBot"
 
 # Bot Configuration
-locale_id       = "en_US"  # Options: en_US, en_GB, es_ES, fr_FR, de_DE
-bot_alias_name  = "TestBotAlias"
-
-# Logging Configuration
-log_level = "INFO"  # Options: DEBUG, INFO, WARNING, ERROR, CRITICAL
+locale_id = "en_US"  # Options: en_US, en_GB, es_ES, fr_FR, de_DE

@@ -42,12 +42,6 @@ variable "bot_name" {
   }
 }
 
-variable "bot_alias_name" {
-  description = "Alias name for the Lex bot"
-  type        = string
-  default     = "TestBotAlias"
-}
-
 variable "locale_id" {
   description = "Locale ID for the bot"
   type        = string
@@ -56,16 +50,5 @@ variable "locale_id" {
   validation {
     condition = contains(["en_US", "en_GB", "es_ES", "fr_FR", "de_DE"], var.locale_id)
     error_message = "Locale must be one of: en_US, en_GB, es_ES, fr_FR, de_DE."
-  }
-}
-
-variable "log_level" {
-  description = "Log level for Lambda function"
-  type        = string
-  default     = "INFO"
-  
-  validation {
-    condition = contains(["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"], var.log_level)
-    error_message = "Log level must be DEBUG, INFO, WARNING, ERROR, or CRITICAL."
   }
 }
