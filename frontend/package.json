@@ -1,8 +1,8 @@
 {
   "name": "aws-health-advice-chatbot-frontend",
-  "version": "1.0.0",
-  "description": "Modern React frontend for AWS Health Advice Chatbot with Lex v2 integration",
-  "keywords": ["react", "aws", "lex", "chatbot", "health", "voice", "serverless", "portfolio"],
+  "version": "2.0.0",
+  "description": "Modern React frontend for AWS Health Advice Chatbot with Lex v2 integration and voice support",
+  "keywords": ["react", "aws", "lex", "chatbot", "health", "voice", "speech", "serverless", "portfolio"],
   "author": "AWS Portfolio Project",
   "license": "MIT",
   "private": true,
@@ -31,7 +31,8 @@
     "format": "prettier --write \"src/**/*.{js,jsx,css,md}\"",
     "build:analyze": "npm run build && npx serve -s build",
     "predeploy": "npm run build",
-    "deploy": "npm run build"
+    "deploy": "npm run build",
+    "voice:test": "echo 'Testing voice capabilities...' && npm start"
   },
   "eslintConfig": {
     "extends": [
@@ -43,7 +44,8 @@
     "production": [
       ">0.2%",
       "not dead",
-      "not op_mini all"
+      "not op_mini all",
+      "not ie <= 11"
     ],
     "development": [
       "last 1 chrome version",

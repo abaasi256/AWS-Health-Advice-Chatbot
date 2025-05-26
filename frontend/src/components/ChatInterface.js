@@ -33,6 +33,38 @@ const ChatHeader = styled.div`
   }
 `;
 
+const VoiceControls = styled.div`
+  display: flex;
+  justify-content: center;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+`;
+
+const VoiceButton = styled.button`
+  background: rgba(255, 255, 255, 0.2);
+  border: 1px solid rgba(255, 255, 255, 0.3);
+  color: white;
+  border-radius: 20px;
+  padding: 0.25rem 0.75rem;
+  font-size: 0.75rem;
+  cursor: pointer;
+  transition: all 0.2s;
+  
+  &:hover:not(:disabled) {
+    background: rgba(255, 255, 255, 0.3);
+  }
+  
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+  
+  &.active {
+    background: #10b981;
+    border-color: #10b981;
+  }
+`;
+
 const MessagesContainer = styled.div`
   flex: 1;
   overflow-y: auto;
@@ -83,6 +115,35 @@ const MessageBubble = styled.div`
   line-height: 1.5;
   font-size: 0.9rem;
   white-space: pre-wrap;
+  position: relative;
+`;
+
+const SpeakerButton = styled.button`
+  position: absolute;
+  top: 0.5rem;
+  right: 0.5rem;
+  background: rgba(0, 0, 0, 0.1);
+  border: none;
+  border-radius: 50%;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-size: 0.75rem;
+  transition: all 0.2s;
+  
+  &:hover {
+    background: rgba(0, 0, 0, 0.2);
+    transform: scale(1.1);
+  }
+  
+  &.speaking {
+    background: #10b981;
+    color: white;
+    animation: pulse 1s infinite;
+  }
 `;
 
 const Avatar = styled.div`
@@ -137,7 +198,7 @@ const MessageInput = styled.input`
   }
 `;
 
-const SendButton = styled.button`
+const ActionButton = styled.button`
   width: 45px;
   height: 45px;
   border: none;
@@ -149,6 +210,7 @@ const SendButton = styled.button`
   justify-content: center;
   cursor: pointer;
   transition: all 0.2s;
+  font-size: 1.2rem;
   
   &:hover:not(:disabled) {
     transform: scale(1.05);
@@ -158,6 +220,50 @@ const SendButton = styled.button`
   &:disabled {
     cursor: not-allowed;
     opacity: 0.5;
+  }
+  
+  &.recording {
+    background: #dc2626;
+    animation: pulse 1s infinite;
+  }
+  
+  &.microphone {
+    background: #10b981;
+  }
+`;
+
+const VoiceIndicator = styled.div`
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.875rem;
+  color: #6b7280;
+  margin-top: 0.5rem;
+  
+  &.recording {
+    color: #dc2626;
+    font-weight: 500;
+  }
+  
+  &.listening {
+    color: #10b981;
+    font-weight: 500;
+  }
+  
+  .pulse-dot {
+    width: 8px;
+    height: 8px;
+    background: #dc2626;
+    border-radius: 50%;
+    animation: pulse 1s infinite;
+  }
+  
+  .listening-dot {
+    width: 8px;
+    height: 8px;
+    background: #10b981;
+    border-radius: 50%;
+    animation: pulse 1s infinite;
   }
 `;
 
@@ -200,24 +306,73 @@ const ChatInterface = ({ onMessageSent, initialMessage }) => {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
   const [isLexReady, setIsLexReady] = useState(false);
+  
+  // Voice states
+  const [isListening, setIsListening] = useState(false);
+  const [isSpeaking, setIsSpeaking] = useState(false);
+  const [voiceEnabled, setVoiceEnabled] = useState(APP_CONFIG.voice.enabled);
+  const [speakingMessageId, setSpeakingMessageId] = useState(null);
+  const [voiceSupport, setVoiceSupport] = useState(null);
+  const [speechRecognition, setSpeechRecognition] = useState(null);
+  
   const messagesEndRef = useRef(null);
 
-  // Initialize Lex service
+  // Initialize services
   useEffect(() => {
-    const initializeLex = async () => {
+    const initializeServices = async () => {
       try {
         await lexService.initialize();
         setIsLexReady(true);
         
+        // Check voice support
+        const support = voiceService.getSupportStatus();
+        setVoiceSupport(support);
+        
+        // Initialize Speech Recognition
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        if (SpeechRecognition) {
+          const recognition = new SpeechRecognition();
+          recognition.continuous = false;
+          recognition.interimResults = false;
+          recognition.lang = APP_CONFIG.voice.language;
+          
+          recognition.onresult = (event) => {
+            const transcript = event.results[0][0].transcript;
+            setInputValue(transcript);
+            setIsListening(false);
+          };
+          
+          recognition.onerror = (event) => {
+            console.error('Speech recognition error:', event.error);
+            setError('Voice recognition failed. Please try again or use text input.');
+            setIsListening(false);
+          };
+          
+          recognition.onend = () => {
+            setIsListening(false);
+          };
+          
+          setSpeechRecognition(recognition);
+        }
+        
         // Add welcome message
-        addMessage('🤖 Hi! I\'m your Health Advice Assistant. I can help you with nutrition, exercise, mental wellness, sleep, and hydration tips. What would you like to know?', MESSAGE_TYPES.BOT);
+        const welcomeMessage = '🤖 Hi! I\'m your Health Advice Assistant. I can help you with nutrition, exercise, mental wellness, sleep, and hydration tips. What would you like to know?';
+        addMessage(welcomeMessage, MESSAGE_TYPES.BOT);
+        
+        // Auto-speak welcome message if voice is enabled
+        if (voiceEnabled && support.synthesis && APP_CONFIG.voice.autoPlay) {
+          setTimeout(() => {
+            handleSpeak(welcomeMessage);
+          }, 1000);
+        }
+        
       } catch (error) {
-        console.error('Failed to initialize Lex:', error);
+        console.error('Failed to initialize services:', error);
         setError('Failed to connect to the chatbot service. Please refresh the page and try again.');
       }
     };
 
-    initializeLex();
+    initializeServices();
   }, []);
 
   // Handle initial message
@@ -250,6 +405,8 @@ const ChatInterface = ({ onMessageSent, initialMessage }) => {
     if (onMessageSent) {
       onMessageSent(message);
     }
+    
+    return message;
   };
 
   const sendMessage = async (text = inputValue.trim()) => {
@@ -264,11 +421,19 @@ const ChatInterface = ({ onMessageSent, initialMessage }) => {
       const response = await lexService.sendTextMessage(text);
       
       setTimeout(() => {
-        addMessage(response.message, MESSAGE_TYPES.BOT, {
+        const botMessage = addMessage(response.message, MESSAGE_TYPES.BOT, {
           intent: response.intent,
           fulfillmentState: response.fulfillmentState
         });
+        
         setIsLoading(false);
+        
+        // Auto-speak bot response if voice is enabled
+        if (voiceEnabled && voiceSupport?.synthesis && APP_CONFIG.voice.autoPlay) {
+          setTimeout(() => {
+            handleSpeak(response.message, botMessage.id);
+          }, 500);
+        }
       }, APP_CONFIG.chat.typingDelay);
       
     } catch (error) {
@@ -276,6 +441,64 @@ const ChatInterface = ({ onMessageSent, initialMessage }) => {
       setError(error.message);
       addMessage('Sorry, I encountered an error. Please try again.', MESSAGE_TYPES.ERROR);
       setIsLoading(false);
+    }
+  };
+
+  const handleStartListening = () => {
+    if (!speechRecognition) {
+      setError('Speech recognition is not supported in this browser. Please use Chrome, Safari, or Edge.');
+      return;
+    }
+
+    try {
+      setError(null);
+      setIsListening(true);
+      speechRecognition.start();
+    } catch (error) {
+      console.error('Error starting speech recognition:', error);
+      setError('Failed to start voice recognition. Please try again.');
+      setIsListening(false);
+    }
+  };
+
+  const handleStopListening = () => {
+    if (speechRecognition && isListening) {
+      speechRecognition.stop();
+      setIsListening(false);
+    }
+  };
+
+  const handleSpeak = async (text, messageId = null) => {
+    if (!voiceSupport?.synthesis) {
+      setError('Text-to-speech is not supported in this browser.');
+      return;
+    }
+
+    try {
+      setIsSpeaking(true);
+      setSpeakingMessageId(messageId);
+      
+      await voiceService.speak(text);
+      
+      setIsSpeaking(false);
+      setSpeakingMessageId(null);
+    } catch (error) {
+      console.error('Error speaking:', error);
+      setIsSpeaking(false);
+      setSpeakingMessageId(null);
+    }
+  };
+
+  const handleStopSpeaking = () => {
+    voiceService.stopSpeaking();
+    setIsSpeaking(false);
+    setSpeakingMessageId(null);
+  };
+
+  const toggleVoice = () => {
+    setVoiceEnabled(prev => !prev);
+    if (isSpeaking) {
+      handleStopSpeaking();
     }
   };
 
@@ -291,6 +514,28 @@ const ChatInterface = ({ onMessageSent, initialMessage }) => {
       <ChatHeader>
         <h3>Health Advice Assistant</h3>
         <p>Ask me about nutrition, exercise, mental wellness, sleep, and hydration</p>
+        
+        <VoiceControls>
+          <VoiceButton
+            onClick={toggleVoice}
+            className={voiceEnabled ? 'active' : ''}
+            disabled={!voiceSupport?.synthesis}
+          >
+            {voiceEnabled ? '🔊 Voice On' : '🔇 Voice Off'}
+          </VoiceButton>
+          
+          {speechRecognition && (
+            <VoiceButton>
+              🎤 Voice Input Ready
+            </VoiceButton>
+          )}
+          
+          {!speechRecognition && (
+            <VoiceButton disabled>
+              🎤 Voice Input Unavailable
+            </VoiceButton>
+          )}
+        </VoiceControls>
       </ChatHeader>
 
       <MessagesContainer>
@@ -301,6 +546,20 @@ const ChatInterface = ({ onMessageSent, initialMessage }) => {
             </Avatar>
             <MessageBubble className="message-bubble">
               {message.content}
+              
+              {message.type === MESSAGE_TYPES.BOT && voiceSupport?.synthesis && (
+                <SpeakerButton
+                  onClick={() => 
+                    speakingMessageId === message.id 
+                      ? handleStopSpeaking() 
+                      : handleSpeak(message.content, message.id)
+                  }
+                  className={speakingMessageId === message.id ? 'speaking' : ''}
+                  title={speakingMessageId === message.id ? 'Stop speaking' : 'Read aloud'}
+                >
+                  {speakingMessageId === message.id ? '⏹️' : '🔊'}
+                </SpeakerButton>
+              )}
             </MessageBubble>
           </Message>
         ))}
@@ -330,21 +589,45 @@ const ChatInterface = ({ onMessageSent, initialMessage }) => {
         <InputWrapper>
           <MessageInput
             type="text"
-            placeholder="Type your health question here..."
+            placeholder={isListening ? "Listening..." : "Type your health question here..."}
             value={inputValue}
             onChange={(e) => setInputValue(e.target.value)}
             onKeyPress={handleKeyPress}
-            disabled={isLoading || !isLexReady}
+            disabled={isLoading || !isLexReady || isListening}
           />
           
-          <SendButton
+          {speechRecognition && (
+            <ActionButton
+              onClick={isListening ? handleStopListening : handleStartListening}
+              className={isListening ? 'recording' : 'microphone'}
+              disabled={isLoading || !isLexReady}
+              title={isListening ? 'Stop listening' : 'Start voice input'}
+            >
+              {isListening ? '⏹️' : '🎤'}
+            </ActionButton>
+          )}
+          
+          <ActionButton
             onClick={() => sendMessage()}
-            disabled={!inputValue.trim() || isLoading || !isLexReady}
+            disabled={!inputValue.trim() || isLoading || !isLexReady || isListening}
             title="Send message"
           >
             📤
-          </SendButton>
+          </ActionButton>
         </InputWrapper>
+        
+        {isListening && (
+          <VoiceIndicator className="listening">
+            <div className="listening-dot"></div>
+            Listening... Speak your health question now
+          </VoiceIndicator>
+        )}
+        
+        {isSpeaking && (
+          <VoiceIndicator>
+            🔊 Speaking...
+          </VoiceIndicator>
+        )}
       </InputContainer>
     </ChatContainer>
   );

@@ -22,8 +22,8 @@ export const AWS_CONFIG = {
 // Application Configuration
 export const APP_CONFIG = {
   name: 'AWS Health Advice Chatbot',
-  version: process.env.REACT_APP_VERSION || '1.0.0',
-  description: 'Get personalized health advice powered by AWS Lex v2',
+  version: process.env.REACT_APP_VERSION || '2.0.0',
+  description: 'Get personalized health advice powered by AWS Lex v2 with voice support',
   environment: process.env.REACT_APP_ENV || 'development',
   
   // Chat Configuration
@@ -37,11 +37,11 @@ export const APP_CONFIG = {
   // Voice Configuration
   voice: {
     enabled: process.env.REACT_APP_VOICE_ENABLED !== 'false',
-    autoPlay: true,
-    speechRate: 1.0,
-    speechPitch: 1.0,
-    speechVolume: 1.0,
-    language: 'en-US'
+    autoPlay: process.env.REACT_APP_VOICE_AUTO_PLAY !== 'false',
+    speechRate: parseFloat(process.env.REACT_APP_VOICE_SPEECH_RATE) || 1.0,
+    speechPitch: parseFloat(process.env.REACT_APP_VOICE_SPEECH_PITCH) || 1.0,
+    speechVolume: parseFloat(process.env.REACT_APP_VOICE_SPEECH_VOLUME) || 1.0,
+    language: process.env.REACT_APP_VOICE_LANGUAGE || 'en-US'
   },
   
   // UI Configuration
@@ -66,8 +66,19 @@ export const HEALTH_TOPICS = [
     ]
   },
   {
+    id: 'hydration',
+    title: 'Hydration Info',
+    icon: '💧',
+    description: 'Learn about proper hydration',
+    sampleQuestions: [
+      'How much water should I drink?',
+      'Tell me about hydration',
+      'Benefits of staying hydrated'
+    ]
+  },
+  {
     id: 'exercise',
-    title: 'Exercise Recommendations',
+    title: 'Exercise Tips',
     icon: '🏃‍♀️',
     description: 'Find the right workout for you',
     sampleQuestions: [
@@ -89,24 +100,13 @@ export const HEALTH_TOPICS = [
   },
   {
     id: 'sleep',
-    title: 'Sleep Tips',
+    title: 'Sleep Advice',
     icon: '😴',
     description: 'Improve your sleep quality',
     sampleQuestions: [
       'How can I sleep better?',
       'Give me sleep advice',
       'I have trouble sleeping'
-    ]
-  },
-  {
-    id: 'hydration',
-    title: 'Hydration Info',
-    icon: '💧',
-    description: 'Learn about proper hydration',
-    sampleQuestions: [
-      'How much water should I drink?',
-      'Tell me about hydration',
-      'Benefits of staying hydrated'
     ]
   }
 ];
@@ -124,5 +124,8 @@ export const ERROR_MESSAGES = {
   NETWORK: 'Network connection error. Please check your internet connection.',
   SERVICE: 'Service temporarily unavailable. Please try again later.',
   VALIDATION: 'Please check your input and try again.',
+  VOICE_NOT_SUPPORTED: 'Voice features are not supported in this browser.',
+  MICROPHONE_ACCESS: 'Microphone access denied. Please enable microphone permissions.',
+  SPEECH_SYNTHESIS_FAILED: 'Text-to-speech failed. Please try again.',
   GENERIC: 'Something went wrong. Please try again.'
 };
