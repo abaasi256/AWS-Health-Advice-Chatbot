@@ -1,5 +1,6 @@
 # AWS Health Advice Chatbot Infrastructure
-# Minimal Terraform configuration for Lex v2 Bot with static responses only
+# Simplified Terraform configuration for Lex v2 Bot with Lambda fulfillment
+# Note: Bot aliases are not yet supported in Terraform, so we use DRAFT version
 
 terraform {
   required_version = ">= 1.0"
@@ -7,6 +8,10 @@ terraform {
     aws = {
       source  = "hashicorp/aws"
       version = "~> 5.0"
+    }
+    archive = {
+      source  = "hashicorp/archive"
+      version = "~> 2.4"
     }
   }
 }
@@ -27,6 +32,76 @@ provider "aws" {
 # Data sources
 data "aws_caller_identity" "current" {}
 data "aws_region" "current" {}
+
+# Lambda deployment package
+data "archive_file" "lambda_zip" {
+  type        = "zip"
+  source_dir  = "${path.module}/../lambda"
+  output_path = "${path.module}/lambda_function.zip"
+  excludes    = ["__pycache__", "*.pyc"]
+}
+
+# IAM Role for Lambda
+resource "aws_iam_role" "lambda_role" {
+  name = "${var.project_name}-lambda-role"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Action = "sts:AssumeRole"
+        Effect = "Allow"
+        Principal = {
+          Service = "lambda.amazonaws.com"
+        }
+      }
+    ]
+  })
+
+  tags = {
+    Component = "Lambda"
+    Security  = "IAM"
+  }
+}
+
+# Lambda basic execution policy
+resource "aws_iam_role_policy_attachment" "lambda_basic" {
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+  role       = aws_iam_role.lambda_role.name
+}
+
+# Lambda Function
+resource "aws_lambda_function" "health_advice_handler" {
+  filename         = data.archive_file.lambda_zip.output_path
+  function_name    = "${var.project_name}-handler"
+  role            = aws_iam_role.lambda_role.arn
+  handler         = "healthAdviceHandler.lambda_handler"
+  runtime         = "python3.9"
+  timeout         = 30
+  source_code_hash = data.archive_file.lambda_zip.output_base64sha256
+
+  environment {
+    variables = {
+      LOG_LEVEL    = "INFO"
+      ENVIRONMENT  = var.environment
+      PROJECT_NAME = var.project_name
+    }
+  }
+
+  tags = {
+    Component = "Lambda"
+    Purpose   = "LexFulfillment"
+  }
+}
+
+# Lambda permission for Lex to invoke the function
+resource "aws_lambda_permission" "allow_lex" {
+  statement_id  = "AllowExecutionFromLex"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.health_advice_handler.function_name
+  principal     = "lexv2.amazonaws.com"
+  source_arn    = "${aws_lexv2models_bot.health_advice_bot.arn}/*"
+}
 
 # IAM Role for Lex
 resource "aws_iam_role" "lex_role" {
@@ -49,6 +124,25 @@ resource "aws_iam_role" "lex_role" {
     Component = "Lex"
     Security  = "IAM"
   }
+}
+
+# Policy for Lex to invoke Lambda
+resource "aws_iam_role_policy" "lex_lambda_policy" {
+  name = "${var.project_name}-lex-lambda-policy"
+  role = aws_iam_role.lex_role.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "lambda:InvokeFunction"
+        ]
+        Resource = aws_lambda_function.health_advice_handler.arn
+      }
+    ]
+  })
 }
 
 # Lex v2 Bot
@@ -82,7 +176,7 @@ resource "aws_lexv2models_bot_locale" "health_advice_bot_locale" {
   }
 }
 
-# Health Intent Definitions - All using minimal static configuration
+# Health Intent Definitions with Lambda fulfillment
 resource "aws_lexv2models_intent" "diet_tips" {
   bot_id      = aws_lexv2models_bot.health_advice_bot.id
   bot_version = "DRAFT"
@@ -105,16 +199,9 @@ resource "aws_lexv2models_intent" "diet_tips" {
     utterance = "What foods are good for me"
   }
 
-  closing_setting {
-    closing_response {
-      message_group {
-        message {
-          plain_text_message {
-            value = "Here are some healthy diet tips: Focus on whole foods like fruits, vegetables, lean proteins, and whole grains. Practice portion control and stay hydrated. Include healthy fats from sources like avocados, nuts, and olive oil. Limit processed foods and added sugars for better health outcomes."
-          }
-        }
-      }
-    }
+  # Enable Lambda fulfillment
+  fulfillment_code_hook {
+    enabled = true
   }
 }
 
@@ -140,16 +227,9 @@ resource "aws_lexv2models_intent" "water_info" {
     utterance = "Benefits of staying hydrated"
   }
 
-  closing_setting {
-    closing_response {
-      message_group {
-        message {
-          plain_text_message {
-            value = "Aim for about 8 glasses (64 oz) of water daily. Increase intake during exercise and hot weather. Include water-rich foods like fruits and vegetables. Choose water over sugary drinks for better health and energy levels."
-          }
-        }
-      }
-    }
+  # Enable Lambda fulfillment
+  fulfillment_code_hook {
+    enabled = true
   }
 }
 
@@ -175,16 +255,9 @@ resource "aws_lexv2models_intent" "exercise_tips" {
     utterance = "What's a good workout routine"
   }
 
-  closing_setting {
-    closing_response {
-      message_group {
-        message {
-          plain_text_message {
-            value = "Here are some exercise recommendations: Aim for at least 150 minutes of moderate aerobic activity per week. Include strength training 2-3 times per week targeting all major muscle groups. Try compound exercises like squats, deadlifts, and push-ups. Start slowly and gradually increase intensity to prevent injury."
-          }
-        }
-      }
-    }
+  # Enable Lambda fulfillment
+  fulfillment_code_hook {
+    enabled = true
   }
 }
 
@@ -210,16 +283,9 @@ resource "aws_lexv2models_intent" "mental_wellness" {
     utterance = "What can I do for my mental wellbeing"
   }
 
-  closing_setting {
-    closing_response {
-      message_group {
-        message {
-          plain_text_message {
-            value = "Here are some mental wellness tips: Practice mindfulness and meditation for 10-15 minutes daily. Maintain strong social connections with family and friends. Keep a gratitude journal to focus on positive aspects of life. Engage in regular physical activity to boost mood naturally. Prioritize quality sleep for emotional regulation."
-          }
-        }
-      }
-    }
+  # Enable Lambda fulfillment
+  fulfillment_code_hook {
+    enabled = true
   }
 }
 
@@ -245,15 +311,8 @@ resource "aws_lexv2models_intent" "sleep_advice" {
     utterance = "Sleep hygiene tips"
   }
 
-  closing_setting {
-    closing_response {
-      message_group {
-        message {
-          plain_text_message {
-            value = "Here are some sleep tips: Maintain a consistent sleep schedule, going to bed and waking up at the same time daily. Create a relaxing bedtime routine and avoid screens 1 hour before bed. Keep your bedroom cool (65-68°F), dark, and quiet. Avoid caffeine after 2 PM and aim for 7-9 hours of sleep per night."
-          }
-        }
-      }
-    }
+  # Enable Lambda fulfillment
+  fulfillment_code_hook {
+    enabled = true
   }
 }

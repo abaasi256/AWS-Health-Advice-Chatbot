@@ -1,0 +1,2 @@
+# No external dependencies required for basic Lambda function
+# All required libraries are included in Python 3.9 runtime

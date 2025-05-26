@@ -8,18 +8,48 @@ class VoiceService {
     this.stream = null;
     this.speechSynthesis = window.speechSynthesis;
     this.isSupported = this.checkSupport();
+    
+    // Ensure voices are loaded
+    this.ensureVoicesLoaded();
   }
 
   checkSupport() {
     const hasMediaRecorder = typeof MediaRecorder !== 'undefined';
     const hasGetUserMedia = navigator.mediaDevices && navigator.mediaDevices.getUserMedia;
     const hasSpeechSynthesis = 'speechSynthesis' in window;
+    
+    // Additional check for speech synthesis functionality
+    const speechSynthesisWorking = hasSpeechSynthesis && 
+      typeof window.speechSynthesis.speak === 'function';
 
     return {
       recording: hasMediaRecorder && hasGetUserMedia,
-      synthesis: hasSpeechSynthesis,
-      full: hasMediaRecorder && hasGetUserMedia && hasSpeechSynthesis
+      synthesis: speechSynthesisWorking,
+      full: hasMediaRecorder && hasGetUserMedia && speechSynthesisWorking
     };
+  }
+
+  async ensureVoicesLoaded() {
+    if (!this.speechSynthesis) return;
+    
+    return new Promise((resolve) => {
+      const checkVoices = () => {
+        const voices = this.speechSynthesis.getVoices();
+        if (voices.length > 0) {
+          resolve(voices);
+        } else {
+          // Wait for voices to load
+          this.speechSynthesis.addEventListener('voiceschanged', () => {
+            resolve(this.speechSynthesis.getVoices());
+          }, { once: true });
+          
+          // Fallback timeout
+          setTimeout(() => resolve([]), 2000);
+        }
+      };
+      
+      checkVoices();
+    });
   }
 
   async startRecording() {
@@ -138,44 +168,71 @@ class VoiceService {
   async speak(text, options = {}) {
     if (!this.isSupported.synthesis) {
       console.warn('Speech synthesis is not supported in this browser');
-      return;
+      throw new Error('Text-to-speech is not supported in this browser');
     }
 
+    // Cancel any ongoing speech
     this.speechSynthesis.cancel();
+    
+    // Small delay to ensure cancellation is processed
+    await new Promise(resolve => setTimeout(resolve, 50));
 
     return new Promise((resolve, reject) => {
-      const utterance = new SpeechSynthesisUtterance(text);
+      try {
+        const utterance = new SpeechSynthesisUtterance(text);
 
-      utterance.rate = options.rate || APP_CONFIG.voice.speechRate;
-      utterance.pitch = options.pitch || APP_CONFIG.voice.speechPitch;
-      utterance.volume = options.volume || APP_CONFIG.voice.speechVolume;
-      utterance.lang = options.language || APP_CONFIG.voice.language;
+        utterance.rate = options.rate || APP_CONFIG.voice.speechRate;
+        utterance.pitch = options.pitch || APP_CONFIG.voice.speechPitch;
+        utterance.volume = options.volume || APP_CONFIG.voice.speechVolume;
+        utterance.lang = options.language || APP_CONFIG.voice.language;
 
-      const voices = this.speechSynthesis.getVoices();
-      const preferredVoice = voices.find(voice => 
-        voice.lang.startsWith('en') && voice.name.includes('Google')
-      ) || voices.find(voice => voice.lang.startsWith('en'));
+        // Get and set voice
+        const voices = this.speechSynthesis.getVoices();
+        if (voices.length > 0) {
+          const preferredVoice = voices.find(voice => 
+            voice.lang.startsWith('en') && (
+              voice.name.includes('Google') || 
+              voice.name.includes('Microsoft') ||
+              voice.name.includes('Amazon')
+            )
+          ) || voices.find(voice => voice.lang.startsWith('en')) || voices[0];
 
-      if (preferredVoice) {
-        utterance.voice = preferredVoice;
+          if (preferredVoice) {
+            utterance.voice = preferredVoice;
+          }
+        }
+
+        utterance.onend = () => {
+          console.log('Speech synthesis completed');
+          resolve();
+        };
+
+        utterance.onerror = (event) => {
+          console.error('Speech synthesis error:', event.error);
+          reject(new Error(`Speech synthesis failed: ${event.error}`));
+        };
+
+        // Start speaking
+        this.speechSynthesis.speak(utterance);
+        
+        // Fallback for some browsers that don't fire events properly
+        setTimeout(() => {
+          if (this.speechSynthesis.speaking) {
+            console.log('Speech synthesis started successfully');
+          } else {
+            reject(new Error('Speech synthesis failed to start'));
+          }
+        }, 100);
+        
+      } catch (error) {
+        console.error('Error creating speech utterance:', error);
+        reject(error);
       }
-
-      utterance.onend = () => {
-        console.log('Speech synthesis completed');
-        resolve();
-      };
-
-      utterance.onerror = (event) => {
-        console.error('Speech synthesis error:', event.error);
-        reject(new Error(`Speech synthesis failed: ${event.error}`));
-      };
-
-      this.speechSynthesis.speak(utterance);
     });
   }
 
   stopSpeaking() {
-    if (this.speechSynthesis.speaking) {
+    if (this.speechSynthesis && this.speechSynthesis.speaking) {
       this.speechSynthesis.cancel();
       console.log('Speech synthesis cancelled');
     }
@@ -225,11 +282,22 @@ class VoiceService {
   }
 
   getIsSpeaking() {
-    return this.speechSynthesis.speaking;
+    return this.speechSynthesis && this.speechSynthesis.speaking;
   }
 
   getSupportStatus() {
     return this.isSupported;
+  }
+
+  // Test speech synthesis
+  async testSpeak() {
+    try {
+      await this.speak('Test', { volume: 0.1 });
+      return true;
+    } catch (error) {
+      console.error('Speech test failed:', error);
+      return false;
+    }
   }
 }
 

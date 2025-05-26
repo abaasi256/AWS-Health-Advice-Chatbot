@@ -4,6 +4,7 @@ import lexService from '../services/lexService';
 import voiceService from '../services/voiceService';
 import { MESSAGE_TYPES, APP_CONFIG } from '../config';
 
+// Styled components remain the same...
 const ChatContainer = styled.div`
   display: flex;
   flex-direction: column;
@@ -240,22 +241,9 @@ const VoiceIndicator = styled.div`
   color: #6b7280;
   margin-top: 0.5rem;
   
-  &.recording {
-    color: #dc2626;
-    font-weight: 500;
-  }
-  
   &.listening {
     color: #10b981;
     font-weight: 500;
-  }
-  
-  .pulse-dot {
-    width: 8px;
-    height: 8px;
-    background: #dc2626;
-    border-radius: 50%;
-    animation: pulse 1s infinite;
   }
   
   .listening-dot {
@@ -310,10 +298,11 @@ const ChatInterface = ({ onMessageSent, initialMessage }) => {
   // Voice states
   const [isListening, setIsListening] = useState(false);
   const [isSpeaking, setIsSpeaking] = useState(false);
-  const [voiceEnabled, setVoiceEnabled] = useState(APP_CONFIG.voice.enabled);
+  const [voiceEnabled, setVoiceEnabled] = useState(false);
   const [speakingMessageId, setSpeakingMessageId] = useState(null);
   const [voiceSupport, setVoiceSupport] = useState(null);
   const [speechRecognition, setSpeechRecognition] = useState(null);
+  const [voiceTestPassed, setVoiceTestPassed] = useState(false);
   
   const messagesEndRef = useRef(null);
 
@@ -327,6 +316,19 @@ const ChatInterface = ({ onMessageSent, initialMessage }) => {
         // Check voice support
         const support = voiceService.getSupportStatus();
         setVoiceSupport(support);
+        
+        // Test speech synthesis if supported
+        if (support.synthesis) {
+          try {
+            // Simple test without actual audio
+            const voices = voiceService.getAvailableVoices();
+            setVoiceTestPassed(voices.length > 0);
+            setVoiceEnabled(voices.length > 0 && APP_CONFIG.voice.enabled);
+          } catch (error) {
+            console.warn('Voice test failed:', error);
+            setVoiceTestPassed(false);
+          }
+        }
         
         // Initialize Speech Recognition
         const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -344,7 +346,7 @@ const ChatInterface = ({ onMessageSent, initialMessage }) => {
           
           recognition.onerror = (event) => {
             console.error('Speech recognition error:', event.error);
-            setError('Voice recognition failed. Please try again or use text input.');
+            setError(`Voice recognition failed: ${event.error}. Please try again or use text input.`);
             setIsListening(false);
           };
           
@@ -358,13 +360,6 @@ const ChatInterface = ({ onMessageSent, initialMessage }) => {
         // Add welcome message
         const welcomeMessage = '🤖 Hi! I\'m your Health Advice Assistant. I can help you with nutrition, exercise, mental wellness, sleep, and hydration tips. What would you like to know?';
         addMessage(welcomeMessage, MESSAGE_TYPES.BOT);
-        
-        // Auto-speak welcome message if voice is enabled
-        if (voiceEnabled && support.synthesis && APP_CONFIG.voice.autoPlay) {
-          setTimeout(() => {
-            handleSpeak(welcomeMessage);
-          }, 1000);
-        }
         
       } catch (error) {
         console.error('Failed to initialize services:', error);
@@ -429,7 +424,7 @@ const ChatInterface = ({ onMessageSent, initialMessage }) => {
         setIsLoading(false);
         
         // Auto-speak bot response if voice is enabled
-        if (voiceEnabled && voiceSupport?.synthesis && APP_CONFIG.voice.autoPlay) {
+        if (voiceEnabled && voiceTestPassed && APP_CONFIG.voice.autoPlay) {
           setTimeout(() => {
             handleSpeak(response.message, botMessage.id);
           }, 500);
@@ -469,8 +464,8 @@ const ChatInterface = ({ onMessageSent, initialMessage }) => {
   };
 
   const handleSpeak = async (text, messageId = null) => {
-    if (!voiceSupport?.synthesis) {
-      setError('Text-to-speech is not supported in this browser.');
+    if (!voiceSupport?.synthesis || !voiceTestPassed) {
+      console.warn('Text-to-speech not available');
       return;
     }
 
@@ -496,6 +491,11 @@ const ChatInterface = ({ onMessageSent, initialMessage }) => {
   };
 
   const toggleVoice = () => {
+    if (!voiceTestPassed) {
+      setError('Voice features are not fully supported in this browser. Try using Chrome, Safari, or Edge for the best experience.');
+      return;
+    }
+    
     setVoiceEnabled(prev => !prev);
     if (isSpeaking) {
       handleStopSpeaking();
@@ -519,18 +519,16 @@ const ChatInterface = ({ onMessageSent, initialMessage }) => {
           <VoiceButton
             onClick={toggleVoice}
             className={voiceEnabled ? 'active' : ''}
-            disabled={!voiceSupport?.synthesis}
+            disabled={!voiceTestPassed}
           >
             {voiceEnabled ? '🔊 Voice On' : '🔇 Voice Off'}
           </VoiceButton>
           
-          {speechRecognition && (
+          {speechRecognition ? (
             <VoiceButton>
               🎤 Voice Input Ready
             </VoiceButton>
-          )}
-          
-          {!speechRecognition && (
+          ) : (
             <VoiceButton disabled>
               🎤 Voice Input Unavailable
             </VoiceButton>
@@ -547,7 +545,7 @@ const ChatInterface = ({ onMessageSent, initialMessage }) => {
             <MessageBubble className="message-bubble">
               {message.content}
               
-              {message.type === MESSAGE_TYPES.BOT && voiceSupport?.synthesis && (
+              {message.type === MESSAGE_TYPES.BOT && voiceTestPassed && (
                 <SpeakerButton
                   onClick={() => 
                     speakingMessageId === message.id 
