@@ -423,6 +423,370 @@ terraform fmt
 
 ---
 
+## 🔧 **Troubleshooting Lambda Integration**
+
+### **🚨 Common Lambda Permission Issues**
+
+#### **Issue 1: "Access denied while invoking lambda function" Error**
+
+**Error Message:**
+```
+Invalid Bot Configuration: Access denied while invoking lambda function 
+arn:aws:lambda:us-east-1:ACCOUNT:function:health-advice-chatbot-handler 
+from arn:aws:lex:us-east-1:ACCOUNT:bot-alias/BOTID/ALIASID. 
+Please check the policy on this function.
+```
+
+**Root Cause:** Lambda function lacks permission for Lex bot alias to invoke it.
+
+**✅ Solution:**
+
+1. **Add Bot Alias Lambda Permission:**
+```bash
+# Get your bot ID and Lambda function name from Terraform outputs
+BOT_ID=$(cd infra && terraform output -raw lex_bot_id)
+LAMBDA_FUNCTION=$(cd infra && terraform output -raw lambda_function_name)
+AWS_REGION=$(cd infra && terraform output -raw aws_region)
+ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+
+# Add permission for bot alias to invoke Lambda
+aws lambda add-permission \
+  --function-name $LAMBDA_FUNCTION \
+  --statement-id "AllowLexBotAlias" \
+  --action "lambda:InvokeFunction" \
+  --principal "lexv2.amazonaws.com" \
+  --source-arn "arn:aws:lex:$AWS_REGION:$ACCOUNT_ID:bot-alias/$BOT_ID/*" \
+  --region $AWS_REGION
+```
+
+2. **Verify Permission:**
+```bash
+aws lambda get-policy --function-name $LAMBDA_FUNCTION --region $AWS_REGION
+```
+
+---
+
+#### **Issue 2: "Cannot call FulfillmentCodeHook" Error**
+
+**Error Message:**
+```
+Cannot call FulfillmentCodeHook for Intent ExerciseTips. 
+BotAlias/LocaleId TestBotAlias/en_US doesn't have an associated Lambda Function.
+```
+
+**Root Cause:** Bot alias not properly configured with Lambda function association.
+
+**✅ Solution - Create Bot Alias with Lambda Integration:**
+
+1. **Build Bot Locale:**
+```bash
+BOT_ID=$(cd infra && terraform output -raw lex_bot_id)
+LOCALE_ID=$(cd infra && terraform output -raw lex_bot_locale_id)
+AWS_REGION=$(cd infra && terraform output -raw aws_region)
+
+# Build the bot locale
+aws lexv2-models build-bot-locale \
+  --bot-id $BOT_ID \
+  --bot-version "DRAFT" \
+  --locale-id $LOCALE_ID \
+  --region $AWS_REGION
+
+# Wait for build to complete (check status)
+aws lexv2-models describe-bot-locale \
+  --bot-id $BOT_ID \
+  --bot-version "DRAFT" \
+  --locale-id $LOCALE_ID \
+  --region $AWS_REGION \
+  --query 'botLocaleStatus'
+```
+
+2. **Create Bot Version:**
+```bash
+# Create bot version after locale is built
+VERSION_RESPONSE=$(aws lexv2-models create-bot-version \
+  --bot-id $BOT_ID \
+  --description "Production version with Lambda" \
+  --bot-version-locale-specification "$LOCALE_ID={sourceBotVersion=DRAFT}" \
+  --region $AWS_REGION \
+  --output json)
+
+# Extract version number
+BOT_VERSION=$(echo $VERSION_RESPONSE | jq -r '.botVersion')
+echo "Created bot version: $BOT_VERSION"
+```
+
+3. **Create Bot Alias with Lambda Association:**
+```bash
+LAMBDA_ARN=$(cd infra && terraform output -raw lambda_function_arn)
+
+# Create alias with Lambda function
+aws lexv2-models create-bot-alias \
+  --bot-alias-name "TestBotAlias" \
+  --description "Test alias with Lambda fulfillment" \
+  --bot-version $BOT_VERSION \
+  --bot-id $BOT_ID \
+  --bot-alias-locale-settings "$LOCALE_ID={enabled=true,codeHookSpecification={lambdaCodeHook={lambdaArn=$LAMBDA_ARN,codeHookInterfaceVersion=1.0}}}" \
+  --region $AWS_REGION
+```
+
+4. **Verify Alias Configuration:**
+```bash
+# Get alias ID
+ALIAS_ID=$(aws lexv2-models list-bot-aliases \
+  --bot-id $BOT_ID \
+  --region $AWS_REGION \
+  --query 'botAliasSummaries[?botAliasName==`TestBotAlias`].botAliasId' \
+  --output text)
+
+# Check alias configuration
+aws lexv2-models describe-bot-alias \
+  --bot-id $BOT_ID \
+  --bot-alias-id $ALIAS_ID \
+  --region $AWS_REGION
+```
+
+---
+
+### **🛠️ Complete Lambda Permission Fix Script**
+
+Create this script to fix both issues automatically:
+
+```bash
+#!/bin/bash
+# fix-lambda-permissions.sh
+
+set -e
+
+echo "🔧 Fixing Lambda permissions for Lex bot..."
+
+# Get Terraform outputs
+cd infra
+BOT_ID=$(terraform output -raw lex_bot_id)
+BOT_NAME=$(terraform output -raw lex_bot_name)
+LAMBDA_FUNCTION=$(terraform output -raw lambda_function_name)
+LAMBDA_ARN=$(terraform output -raw lambda_function_arn)
+LOCALE_ID=$(terraform output -raw lex_bot_locale_id)
+AWS_REGION=$(terraform output -raw aws_region)
+ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+cd ..
+
+echo "📋 Configuration:"
+echo "  Bot ID: $BOT_ID"
+echo "  Lambda: $LAMBDA_FUNCTION"
+echo "  Region: $AWS_REGION"
+
+# Step 1: Add Lambda permissions
+echo "🔐 Adding Lambda permissions..."
+
+# Permission for bot
+aws lambda add-permission \
+  --function-name $LAMBDA_FUNCTION \
+  --statement-id "AllowLexBot" \
+  --action "lambda:InvokeFunction" \
+  --principal "lexv2.amazonaws.com" \
+  --source-arn "arn:aws:lex:$AWS_REGION:$ACCOUNT_ID:bot/$BOT_ID/*" \
+  --region $AWS_REGION || echo "Bot permission already exists"
+
+# Permission for bot alias
+aws lambda add-permission \
+  --function-name $LAMBDA_FUNCTION \
+  --statement-id "AllowLexBotAlias" \
+  --action "lambda:InvokeFunction" \
+  --principal "lexv2.amazonaws.com" \
+  --source-arn "arn:aws:lex:$AWS_REGION:$ACCOUNT_ID:bot-alias/$BOT_ID/*" \
+  --region $AWS_REGION || echo "Bot alias permission already exists"
+
+echo "✅ Lambda permissions configured"
+
+# Step 2: Build bot locale
+echo "🔨 Building bot locale..."
+aws lexv2-models build-bot-locale \
+  --bot-id $BOT_ID \
+  --bot-version "DRAFT" \
+  --locale-id $LOCALE_ID \
+  --region $AWS_REGION
+
+# Wait for build
+echo "⏳ Waiting for bot locale build..."
+while true; do
+  STATUS=$(aws lexv2-models describe-bot-locale \
+    --bot-id $BOT_ID \
+    --bot-version "DRAFT" \
+    --locale-id $LOCALE_ID \
+    --region $AWS_REGION \
+    --query 'botLocaleStatus' \
+    --output text)
+  
+  echo "  Build status: $STATUS"
+  
+  if [ "$STATUS" = "Built" ]; then
+    break
+  elif [ "$STATUS" = "Failed" ]; then
+    echo "❌ Bot locale build failed"
+    exit 1
+  fi
+  
+  sleep 10
+done
+
+echo "✅ Bot locale built successfully"
+
+# Step 3: Create bot version
+echo "📦 Creating bot version..."
+VERSION_RESPONSE=$(aws lexv2-models create-bot-version \
+  --bot-id $BOT_ID \
+  --description "Version with Lambda fulfillment" \
+  --bot-version-locale-specification "$LOCALE_ID={sourceBotVersion=DRAFT}" \
+  --region $AWS_REGION \
+  --output json)
+
+BOT_VERSION=$(echo $VERSION_RESPONSE | jq -r '.botVersion')
+echo "✅ Created bot version: $BOT_VERSION"
+
+# Wait for version
+echo "⏳ Waiting for bot version..."
+while true; do
+  STATUS=$(aws lexv2-models describe-bot-version \
+    --bot-id $BOT_ID \
+    --bot-version $BOT_VERSION \
+    --region $AWS_REGION \
+    --query 'botStatus' \
+    --output text)
+  
+  echo "  Version status: $STATUS"
+  
+  if [ "$STATUS" = "Available" ]; then
+    break
+  elif [ "$STATUS" = "Failed" ]; then
+    echo "❌ Bot version creation failed"
+    exit 1
+  fi
+  
+  sleep 5
+done
+
+# Step 4: Create/update bot alias with Lambda
+echo "🔗 Creating bot alias with Lambda association..."
+
+# Delete existing alias if it exists
+aws lexv2-models delete-bot-alias \
+  --bot-id $BOT_ID \
+  --bot-alias-id TSTALIASID \
+  --region $AWS_REGION 2>/dev/null || echo "No existing alias to delete"
+
+# Create new alias
+aws lexv2-models create-bot-alias \
+  --bot-alias-name "TestBotAlias" \
+  --description "Test alias with Lambda fulfillment" \
+  --bot-version $BOT_VERSION \
+  --bot-id $BOT_ID \
+  --bot-alias-locale-settings "$LOCALE_ID={enabled=true,codeHookSpecification={lambdaCodeHook={lambdaArn=$LAMBDA_ARN,codeHookInterfaceVersion=1.0}}}" \
+  --region $AWS_REGION
+
+echo "🎉 Lambda integration fixed!"
+echo ""
+echo "✅ Next steps:"
+echo "  1. Test in Lex console with TestBotAlias"
+echo "  2. Try: 'Give me healthy diet tips'"
+echo "  3. Check CloudWatch logs: /aws/lambda/$LAMBDA_FUNCTION"
+echo "  4. Update frontend .env if needed"
+```
+
+**Usage:**
+```bash
+chmod +x fix-lambda-permissions.sh
+./fix-lambda-permissions.sh
+```
+
+---
+
+### **🧪 Testing Lambda Integration**
+
+#### **Test in AWS Console:**
+1. Go to [Lex Console](https://console.aws.amazon.com/lexv2/)
+2. Open your `HealthAdviceBot`
+3. Use **TestBotAlias** for testing
+4. Try: *"Give me healthy diet tips"*
+5. Verify Lambda function is called in CloudWatch logs
+
+#### **Test via CLI:**
+```bash
+# Test bot alias directly
+aws lexv2-runtime recognize-text \
+  --bot-id $BOT_ID \
+  --bot-alias-id "TSTALIASID" \
+  --locale-id $LOCALE_ID \
+  --session-id "test-session" \
+  --text "Give me healthy diet tips" \
+  --region $AWS_REGION
+```
+
+#### **Monitor Lambda Execution:**
+```bash
+# Watch Lambda logs in real-time
+aws logs tail /aws/lambda/health-advice-chatbot-handler --follow --region $AWS_REGION
+```
+
+---
+
+### **🔍 Verification Checklist**
+
+**Lambda Permissions:**
+- [ ] Bot-level permission exists
+- [ ] Bot-alias level permission exists
+- [ ] Lambda policy shows both permissions
+
+**Bot Configuration:**
+- [ ] Bot locale is "Built" status
+- [ ] Bot version is "Available"
+- [ ] Bot alias exists with Lambda ARN
+- [ ] TestBotAlias shows Lambda configuration
+
+**Testing:**
+- [ ] Lex console test works with TestBotAlias
+- [ ] Lambda function executes (check CloudWatch)
+- [ ] Dynamic responses vary between tests
+- [ ] Health disclaimers appear in responses
+- [ ] Frontend connects to bot alias
+
+**Common Issues:**
+- 🚫 **"No alias found"** → Run alias creation step
+- 🚫 **"Access denied"** → Add Lambda permissions
+- 🚫 **"Bot not found"** → Check Terraform deployment
+- 🚫 **"Function timeout"** → Check Lambda logs
+
+---
+
+### **🆘 Emergency Reset**
+
+If everything breaks:
+
+```bash
+# 1. Destroy and recreate infrastructure
+cd infra
+terraform destroy -auto-approve
+terraform apply -auto-approve
+
+# 2. Run fix script
+cd ..
+./fix-lambda-permissions.sh
+
+# 3. Test immediately
+echo "Testing bot alias..."
+BOT_ID=$(cd infra && terraform output -raw lex_bot_id)
+aws lexv2-runtime recognize-text \
+  --bot-id $BOT_ID \
+  --bot-alias-id "TSTALIASID" \
+  --locale-id "en_US" \
+  --session-id "emergency-test" \
+  --text "Give me diet tips" \
+  --region us-east-1
+```
+
+**Result:** Complete Lambda integration with proper permissions and bot alias configuration.
+
+---
+
 ## 🔧 **Development & Customization**
 
 ### **Adding New Health Topics**

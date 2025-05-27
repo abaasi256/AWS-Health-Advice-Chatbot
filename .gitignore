@@ -152,6 +152,9 @@ my-*
 LinkedIn-Guide.md
 add-diagram.sh
 
+# Archive directory - development files not for production
+.archive/
+
 # Backup files
 *.backup
 *.bak
@@ -221,4 +224,3 @@ vulnerability-report-*.json
 !terraform.tfvars.example
 !.env.example
 !config.example.js
-generate_aws_architecture.py
