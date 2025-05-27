@@ -148,6 +148,10 @@ personal-*
 my-*
 *-personal.*
 
+# Project-specific exclusions
+LinkedIn-Guide.md
+add-diagram.sh
+
 # Backup files
 *.backup
 *.bak

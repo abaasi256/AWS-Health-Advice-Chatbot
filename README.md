@@ -56,6 +56,11 @@ The AWS Health Advice Chatbot is a comprehensive **portfolio project** that demo
 
 ## 🏗️ **Architecture**
 
+### **🎨 Official AWS Architecture Diagram**
+![AWS Health Advice Chatbot Architecture](Screenshots/aws-architecture-diagram.png)
+*Professional AWS architecture diagram showing the complete serverless flow from React frontend through Lex v2, Lambda fulfillment, and infrastructure components.*
+
+### **📊 Architecture Flow**
 ```mermaid
 graph TB
     subgraph "Frontend"
@@ -206,7 +211,11 @@ HEALTH_ADVICE = {
 
 ## 🎯 **Proof of Working Implementation**
 
-### **Screenshot Evidence**
+### **🏗️ Architecture Evidence**
+![AWS Architecture Diagram](Screenshots/aws-architecture-diagram.png)
+*Professional AWS architecture diagram using official AWS icons, showing the complete serverless infrastructure.*
+
+### **📸 Screenshot Evidence**
 
 #### **1. AWS Lex Console - TestBotAlias Working**
 ![Lex Console](Screenshots/Screenshot%202025-05-26%20at%209.39.04%20PM.png)
@@ -224,6 +233,7 @@ HEALTH_ADVICE = {
 - ✅ **Frontend Integration**: React app successfully connects to Lex
 - ✅ **Health Disclaimers**: Automatically included in all Lambda responses
 - ✅ **Error Handling**: Graceful fallbacks and user-friendly error messages
+- ✅ **Architecture Documentation**: Professional AWS diagram with official icons
 
 ---
 
@@ -277,6 +287,7 @@ aws-health-advice-chatbot/
 │   ├── package.json               # Dependencies with voice libs
 │   └── README.md                  # Frontend voice guide
 ├── 📂 Screenshots/                # Working Bot Evidence ⭐
+│   ├── aws-architecture-diagram.png          # Official AWS architecture diagram
 │   ├── Screenshot 2025-05-26 at 9.39.04 PM.png  # Lex Console
 │   └── Screenshot 2025-05-26 at 9.44.24 PM.png  # Frontend
 └── 📄 README.md                   # This documentation
@@ -444,6 +455,7 @@ terraform fmt
 - ✅ **Performance Optimization** - Cost-effective Lambda architecture
 - ✅ **DevOps Practices** - Automated deployment, testing, monitoring
 - ✅ **Problem Solving** - Complex integration challenges and solutions
+- ✅ **Documentation Excellence** - Professional diagrams and comprehensive guides
 
 ### **Innovation Highlights**
 - **Lambda-Powered Health Assistant** - Dynamic, educational health advice
