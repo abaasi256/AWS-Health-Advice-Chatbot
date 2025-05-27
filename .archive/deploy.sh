@@ -1,64 +1,55 @@
 #!/bin/bash
 
-# Automated deployment script for Lambda integration
-echo "🚀 Starting Lambda Integration Deployment"
-echo "=========================================="
+# AWS Health Advice Chatbot - Complete Deployment Script
+# This script handles the full deployment including Terraform and bot alias creation
 
-cd /Users/abaasi/Desktop/AWS-Health-Advice-Chatbot/infra
+set -e
 
-# Step 1: Initialize Terraform
-echo "🔧 Initializing Terraform..."
-terraform init > /tmp/terraform_init.log 2>&1
-if [ $? -eq 0 ]; then
-    echo "✅ Terraform initialization successful"
-else
-    echo "❌ Terraform initialization failed"
-    cat /tmp/terraform_init.log
-    exit 1
+# Colors for output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m' # No Color
+
+echo -e "${BLUE}🚀 AWS Health Advice Chatbot - Complete Deployment${NC}"
+echo "====================================================="
+
+# Step 1: Terraform deployment
+echo -e "${YELLOW}🏗️  Step 1: Deploying infrastructure with Terraform...${NC}"
+cd "$(dirname "$0")/infra"
+
+# Initialize Terraform if needed
+if [ ! -d ".terraform" ]; then
+    echo "Initializing Terraform..."
+    terraform init
 fi
 
-# Step 2: Validate configuration
-echo "📋 Validating Terraform configuration..."
-terraform validate > /tmp/terraform_validate.log 2>&1
-if [ $? -eq 0 ]; then
-    echo "✅ Terraform validation successful"
-else
-    echo "❌ Terraform validation failed"
-    cat /tmp/terraform_validate.log
-    exit 1
-fi
+# Plan and apply
+echo "Planning Terraform deployment..."
+terraform plan
 
-# Step 3: Plan deployment
-echo "📊 Planning Terraform deployment..."
-terraform plan -out=tfplan > /tmp/terraform_plan.log 2>&1
-if [ $? -eq 0 ]; then
-    echo "✅ Terraform plan successful"
-else
-    echo "❌ Terraform plan failed"
-    cat /tmp/terraform_plan.log
-    exit 1
-fi
+echo "Applying Terraform configuration..."
+terraform apply -auto-approve
 
-# Step 4: Apply deployment
-echo "🚀 Applying Terraform deployment..."
-terraform apply tfplan > /tmp/terraform_apply.log 2>&1
-if [ $? -eq 0 ]; then
-    echo "✅ Terraform apply successful"
-    
-    # Get outputs
-    echo "📋 Deployment Summary:"
-    terraform output deployment_summary
-    
-    echo ""
-    echo "🎉 Lambda integration deployment completed successfully!"
-    echo ""
-    echo "🧪 Next steps:"
-    echo "1. Test the bot in AWS Console"
-    echo "2. Use the TestBotAlias for Lambda fulfillment"
-    echo "3. Try phrases like 'Give me sleep advice'"
-    
-else
-    echo "❌ Terraform apply failed"
-    cat /tmp/terraform_apply.log
-    exit 1
-fi
+echo -e "${GREEN}✅ Terraform deployment complete${NC}"
+
+# Step 2: Create bot alias
+echo -e "${YELLOW}🤖 Step 2: Creating bot alias with Lambda integration...${NC}"
+cd ..
+
+# Make the script executable
+chmod +x create_bot_alias.sh
+
+# Run the bot alias creation
+./create_bot_alias.sh
+
+echo -e "${GREEN}🎉 Complete deployment finished!${NC}"
+echo ""
+echo -e "${BLUE}📋 Next Steps:${NC}"
+echo "1. Update your frontend .env with the bot alias ID"
+echo "2. Test the bot in the AWS Lex console"
+echo "3. Deploy your frontend application"
+echo ""
+echo -e "${YELLOW}💡 To redeploy infrastructure only:${NC} cd infra && terraform apply"
+echo -e "${YELLOW}💡 To recreate bot alias only:${NC} ./create_bot_alias.sh"

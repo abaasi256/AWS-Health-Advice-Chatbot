@@ -75,7 +75,7 @@ node --version       # Node.js v16+
 
 ```bash
 # Clone repository
-git clone <repository-url>
+git clone https://github.com/abaasi256/AWS-Health-Advice-Chatbot
 cd aws-health-advice-chatbot
 
 # Deploy AWS infrastructure with Lambda fulfillment

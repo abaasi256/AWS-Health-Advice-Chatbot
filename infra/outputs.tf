@@ -88,6 +88,26 @@ output "lambda_iam_role_name" {
   value       = aws_iam_role.lambda_role.name
 }
 
+# Bot alias automation
+output "bot_alias_creation_command" {
+  description = "Command to create bot alias with Lambda integration"
+  value = "./create_bot_alias.sh"
+}
+
+output "bot_alias_instructions" {
+  description = "Instructions for creating bot alias with Lambda integration"
+  value = {
+    note = "Run the automated script to create a bot alias with Lambda function association"
+    command = "chmod +x create_bot_alias.sh && ./create_bot_alias.sh"
+    manual_steps = [
+      "1. Build bot locale: aws lexv2-models build-bot-locale --bot-id ${aws_lexv2models_bot.health_advice_bot.id} --bot-version DRAFT --locale-id ${var.locale_id}",
+      "2. Create bot version: aws lexv2-models create-bot-version --bot-id ${aws_lexv2models_bot.health_advice_bot.id}",
+      "3. Create alias with Lambda: aws lexv2-models create-bot-alias --bot-alias-name TestBotAlias --bot-id ${aws_lexv2models_bot.health_advice_bot.id} --bot-version [VERSION] --bot-alias-locale-settings '${var.locale_id}={enabled=true,codeHookSpecification={lambdaCodeHook={lambdaArn=${aws_lambda_function.health_advice_handler.arn},codeHookInterfaceVersion=1.0}}}'"
+    ]
+    lambda_arn = aws_lambda_function.health_advice_handler.arn
+  }
+}
+
 # Deployment summary
 output "deployment_summary" {
   description = "Summary of deployed resources"
@@ -100,7 +120,8 @@ output "deployment_summary" {
     environment      = var.environment
     project_name     = var.project_name
     intent_count     = 5
-    architecture     = "lambda-fulfillment-draft"
+    architecture     = "lambda-fulfillment-with-alias"
+    next_step        = "Run './create_bot_alias.sh' to complete setup"
   }
 }
 
@@ -116,23 +137,12 @@ output "test_bot_instructions" {
       "Give me mental wellness tips",
       "How can I sleep better"
     ]
-    note = "Bot uses Lambda fulfillment with DRAFT version (aliases not supported in Terraform yet)"
+    note = "After running create_bot_alias.sh, test using the TestBotAlias"
     lambda_logs = "https://${var.aws_region}.console.aws.amazon.com/cloudwatch/home?region=${var.aws_region}#logsV2:log-groups/log-group/$252Faws$252Flambda$252F${aws_lambda_function.health_advice_handler.function_name}"
-  }
-}
-
-# Manual alias creation instructions
-output "manual_alias_instructions" {
-  description = "Instructions to manually create bot alias with Lambda integration"
-  value = {
-    note = "Bot aliases are not yet supported in Terraform. To create an alias manually:"
-    steps = [
-      "1. Go to the Lex console",
-      "2. Open your bot: ${aws_lexv2models_bot.health_advice_bot.name}",
-      "3. Create a bot version from DRAFT",
-      "4. Create an alias pointing to that version", 
-      "5. In alias settings, configure Lambda: ${aws_lambda_function.health_advice_handler.arn}"
-    ]
-    lambda_arn = aws_lambda_function.health_advice_handler.arn
+    troubleshooting = {
+      lambda_permissions = "All Lambda permissions configured automatically"
+      bot_alias_setup = "Run ./create_bot_alias.sh to complete the setup"
+      frontend_config = "Update .env with bot alias ID after script completion"
+    }
   }
 }
