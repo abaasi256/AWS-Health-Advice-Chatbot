@@ -221,3 +221,4 @@ vulnerability-report-*.json
 !terraform.tfvars.example
 !.env.example
 !config.example.js
+generate_aws_architecture.py

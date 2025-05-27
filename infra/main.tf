@@ -1,6 +1,5 @@
 # AWS Health Advice Chatbot Infrastructure
-# Simplified Terraform configuration for Lex v2 Bot with Lambda fulfillment
-# Note: Bot aliases are not yet supported in Terraform, so we use DRAFT version
+# Fixed Terraform configuration for Lex v2 Bot with proper Lambda fulfillment permissions
 
 terraform {
   required_version = ">= 1.0"
@@ -94,13 +93,31 @@ resource "aws_lambda_function" "health_advice_handler" {
   }
 }
 
-# Lambda permission for Lex to invoke the function
-resource "aws_lambda_permission" "allow_lex" {
-  statement_id  = "AllowExecutionFromLex"
+# Lambda permission for Lex to invoke the function - Bot level
+resource "aws_lambda_permission" "allow_lex_bot" {
+  statement_id  = "AllowExecutionFromLexBot"
   action        = "lambda:InvokeFunction"
   function_name = aws_lambda_function.health_advice_handler.function_name
   principal     = "lexv2.amazonaws.com"
   source_arn    = "${aws_lexv2models_bot.health_advice_bot.arn}/*"
+}
+
+# Lambda permission for Lex to invoke the function - Bot Alias level
+resource "aws_lambda_permission" "allow_lex_bot_alias" {
+  statement_id  = "AllowExecutionFromLexBotAlias"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.health_advice_handler.function_name
+  principal     = "lexv2.amazonaws.com"
+  source_arn    = "arn:aws:lex:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:bot-alias/${aws_lexv2models_bot.health_advice_bot.id}/*"
+}
+
+# Lambda permission for Lex to invoke the function - Wildcard for any alias
+resource "aws_lambda_permission" "allow_lex_wildcard" {
+  statement_id  = "AllowExecutionFromLexWildcard"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.health_advice_handler.function_name
+  principal     = "lexv2.amazonaws.com"
+  source_arn    = "arn:aws:lex:${data.aws_region.current.name}:${data.aws_caller_identity.current.account_id}:bot/${aws_lexv2models_bot.health_advice_bot.id}/*"
 }
 
 # IAM Role for Lex
@@ -126,7 +143,7 @@ resource "aws_iam_role" "lex_role" {
   }
 }
 
-# Policy for Lex to invoke Lambda
+# Enhanced Policy for Lex to invoke Lambda
 resource "aws_iam_role_policy" "lex_lambda_policy" {
   name = "${var.project_name}-lex-lambda-policy"
   role = aws_iam_role.lex_role.id
@@ -139,7 +156,10 @@ resource "aws_iam_role_policy" "lex_lambda_policy" {
         Action = [
           "lambda:InvokeFunction"
         ]
-        Resource = aws_lambda_function.health_advice_handler.arn
+        Resource = [
+          aws_lambda_function.health_advice_handler.arn,
+          "${aws_lambda_function.health_advice_handler.arn}:*"
+        ]
       }
     ]
   })
